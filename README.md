@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Dairy Management App
 
-## Getting Started
+A simple, reliable dairy management web app built with Next.js, Tailwind CSS, and Supabase.
 
-First, run the development server:
+## What It Includes
+
+- Supabase email/password login only
+- Protected routes with no public dashboard access
+- Milk Collection module with live amount calculation
+- Item credit/debit tracking linked to milk shifts
+- Records module with date-range filtering
+- Automated 10-day ledger cycles with close-cycle locking
+- Credit/debit transaction management
+- CSV export for filtered records
+- PDF export for records and ledger cycles
+
+## Stack
+
+- Next.js App Router
+- React 19
+- Tailwind CSS
+- Supabase Auth + PostgreSQL
+- jsPDF for PDF export
+
+## Environment Setup
+
+Create a `.env.local` file from the example:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Add your Supabase project values:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Supabase Setup
 
-## Learn More
+1. Create a Supabase project.
+2. Create one Auth user manually in the Supabase dashboard.
+3. Run the SQL in [supabase/schema.sql](/Users/shiv/Projects/Coding/dairy-manager/supabase/schema.sql).
+4. Use that single email/password user to log into the app.
 
-To learn more about Next.js, take a look at the following resources:
+The schema follows these tables exactly:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `milk_entries`
+- `transactions`
+- `ledger_cycles`
+- `item_transactions`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Local Development
 
-## Deploy on Vercel
+```bash
+npm install
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Open [http://localhost:3000](http://localhost:3000).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Verification
+
+```bash
+npm run lint
+npm run build
+```
+
+## Notes
+
+- There is no signup flow in the UI.
+- All database operations use the Supabase client.
+- The Records page defaults to the current month through today for its date filter.
+- Ledger cycles are generated automatically as `1-10`, `11-20`, and `21-end of month`.
+- Closing a cycle locks new backdated entries for that cycle across milk entries, item transactions, and payments.
