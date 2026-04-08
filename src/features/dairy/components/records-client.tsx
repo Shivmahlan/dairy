@@ -6,6 +6,7 @@ import { Download, FileText, LoaderCircle, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 import { AlertBanner } from "./alert-banner";
+import { useBusinessContext } from "./business-context-provider";
 import { SummaryCard } from "./summary-card";
 import { buildSummary } from "../lib/calculations";
 import { TRANSACTION_TYPE_OPTIONS } from "../lib/constants";
@@ -48,6 +49,7 @@ const initialTransactionForm = (today: string): TransactionInput => ({
 export function RecordsClient() {
   const today = getTodayDateString();
   const supabase = useRef(createClient()).current;
+  const { businessId } = useBusinessContext();
   const [startDate, setStartDate] = useState(getMonthStartDateString());
   const [endDate, setEndDate] = useState(today);
   const [milkEntries, setMilkEntries] = useState<MilkEntryRow[]>([]);
@@ -87,7 +89,7 @@ export function RecordsClient() {
     setFetchError(null);
 
     try {
-      const data = await fetchRecords(supabase, startDate, endDate);
+      const data = await fetchRecords(supabase, businessId, startDate, endDate);
       setMilkEntries(data.milkEntries);
       setTransactions(data.transactions);
       setItemTransactions(data.itemTransactions);
@@ -126,7 +128,12 @@ export function RecordsClient() {
       }
 
       try {
-        const data = await fetchRecords(supabase, startDate, endDate);
+        const data = await fetchRecords(
+          supabase,
+          businessId,
+          startDate,
+          endDate,
+        );
 
         if (!isActive) {
           return;
@@ -157,7 +164,7 @@ export function RecordsClient() {
     return () => {
       isActive = false;
     };
-  }, [endDate, startDate, supabase]);
+  }, [businessId, endDate, startDate, supabase]);
 
   useEffect(() => {
     if (!dialogOpen) {
@@ -170,6 +177,7 @@ export function RecordsClient() {
       try {
         const lockState = await fetchCycleLockForDate(
           supabase,
+          businessId,
           transactionForm.date,
         );
 
@@ -188,7 +196,7 @@ export function RecordsClient() {
     return () => {
       isActive = false;
     };
-  }, [dialogOpen, supabase, transactionForm.date]);
+  }, [businessId, dialogOpen, supabase, transactionForm.date]);
 
   async function handleTransactionSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -215,7 +223,10 @@ export function RecordsClient() {
     setIsSavingTransaction(true);
 
     try {
-      await insertTransaction(supabase, validation.payload);
+      await insertTransaction(supabase, {
+        ...validation.payload,
+        business_id: businessId,
+      });
       await refreshRecords();
       setDialogOpen(false);
       setTransactionForm(initialTransactionForm(today));

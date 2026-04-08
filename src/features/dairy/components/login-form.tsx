@@ -23,8 +23,8 @@ export function LoginForm() {
           Log in
         </h2>
         <p className="mt-3 text-sm leading-6 text-muted">
-          Use the email and password from your Supabase Auth user. Sign-up stays
-          disabled in the app so access stays simple.
+          Use the email and password from a Supabase Auth account that has already
+          been assigned to a dairy business. Sign-up stays disabled in the app.
         </p>
       </div>
 

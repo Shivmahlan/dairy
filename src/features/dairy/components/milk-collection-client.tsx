@@ -12,6 +12,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 
 import { AlertBanner } from "./alert-banner";
+import { useBusinessContext } from "./business-context-provider";
 import { calculateTotalAmount } from "../lib/calculations";
 import {
   SHIFT_OPTIONS,
@@ -48,6 +49,7 @@ import {
 export function MilkCollectionClient() {
   const today = getTodayDateString();
   const supabase = useRef(createClient()).current;
+  const { businessId } = useBusinessContext();
   const [milkForm, setMilkForm] = useState<MilkEntryInput>({
     date: today,
     shift: "morning",
@@ -84,8 +86,8 @@ export function MilkCollectionClient() {
 
     try {
       const [entries, items] = await Promise.all([
-        fetchMilkEntriesForDate(supabase, today),
-        fetchItemTransactionsForDate(supabase, today),
+        fetchMilkEntriesForDate(supabase, businessId, today),
+        fetchItemTransactionsForDate(supabase, businessId, today),
       ]);
 
       setMilkEntries(entries);
@@ -110,8 +112,8 @@ export function MilkCollectionClient() {
 
       try {
         const [entries, items] = await Promise.all([
-          fetchMilkEntriesForDate(supabase, today),
-          fetchItemTransactionsForDate(supabase, today),
+          fetchMilkEntriesForDate(supabase, businessId, today),
+          fetchItemTransactionsForDate(supabase, businessId, today),
         ]);
 
         if (!isActive) {
@@ -142,14 +144,18 @@ export function MilkCollectionClient() {
     return () => {
       isActive = false;
     };
-  }, [supabase, today]);
+  }, [businessId, supabase, today]);
 
   useEffect(() => {
     let isActive = true;
 
     async function loadMilkLock() {
       try {
-        const lockState = await fetchCycleLockForDate(supabase, milkForm.date);
+        const lockState = await fetchCycleLockForDate(
+          supabase,
+          businessId,
+          milkForm.date,
+        );
 
         if (isActive) {
           setMilkLock(lockState);
@@ -166,14 +172,18 @@ export function MilkCollectionClient() {
     return () => {
       isActive = false;
     };
-  }, [milkForm.date, supabase]);
+  }, [businessId, milkForm.date, supabase]);
 
   useEffect(() => {
     let isActive = true;
 
     async function loadItemLock() {
       try {
-        const lockState = await fetchCycleLockForDate(supabase, itemForm.date);
+        const lockState = await fetchCycleLockForDate(
+          supabase,
+          businessId,
+          itemForm.date,
+        );
 
         if (isActive) {
           setItemLock(lockState);
@@ -190,7 +200,7 @@ export function MilkCollectionClient() {
     return () => {
       isActive = false;
     };
-  }, [itemForm.date, supabase]);
+  }, [businessId, itemForm.date, supabase]);
 
   async function handleMilkSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -217,7 +227,10 @@ export function MilkCollectionClient() {
     setIsSavingMilk(true);
 
     try {
-      await insertMilkEntry(supabase, validation.payload);
+      await insertMilkEntry(supabase, {
+        ...validation.payload,
+        business_id: businessId,
+      });
 
       if (milkForm.date === today) {
         await refreshTodayActivity();
@@ -268,7 +281,10 @@ export function MilkCollectionClient() {
     setIsSavingItem(true);
 
     try {
-      await insertItemTransaction(supabase, validation.payload);
+      await insertItemTransaction(supabase, {
+        ...validation.payload,
+        business_id: businessId,
+      });
 
       if (itemForm.date === today) {
         await refreshTodayActivity();

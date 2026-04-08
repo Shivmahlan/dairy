@@ -2,9 +2,19 @@ export type MilkShift = "morning" | "evening";
 export type TransactionType = "credit" | "debit";
 export type LedgerCycleStatus = "open" | "closed";
 export type BalanceTone = "green" | "red" | "yellow";
+export type BusinessRole = "owner" | "member";
+
+export interface BusinessContext {
+  userId: string;
+  userEmail: string;
+  businessId: string;
+  businessName: string;
+  role: BusinessRole;
+}
 
 export interface MilkEntryRow {
   id: string;
+  business_id: string;
   date: string;
   shift: MilkShift;
   weight: number;
@@ -15,6 +25,7 @@ export interface MilkEntryRow {
 
 export interface TransactionRow {
   id: string;
+  business_id: string;
   date: string;
   type: TransactionType;
   amount: number;
@@ -24,6 +35,7 @@ export interface TransactionRow {
 
 export interface ItemTransactionRow {
   id: string;
+  business_id: string;
   date: string;
   shift: MilkShift;
   item_name: string;
@@ -86,6 +98,7 @@ export interface ItemTransactionInput {
 
 export interface LedgerCycleRow {
   id: string;
+  business_id: string;
   start_date: string;
   end_date: string;
   total_milk_amount: number;

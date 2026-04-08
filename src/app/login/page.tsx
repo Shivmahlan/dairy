@@ -18,8 +18,8 @@ const quickPoints = [
   },
   {
     icon: ShieldCheck,
-    title: "Single-user access",
-    description: "Use one Supabase email/password login with protected routes across the app.",
+    title: "Assigned access",
+    description: "Log in with a manually created Supabase user that has been linked to your dairy business.",
   },
 ];
 
@@ -52,8 +52,9 @@ export default async function LoginPage() {
               A simple dairy dashboard built for daily collection and records.
             </h1>
             <p className="mt-4 text-base leading-7 text-muted sm:text-lg">
-              Sign in with the single Supabase user account to manage milk entries,
-              transactions, summaries, and exports without extra setup screens.
+              Sign in with an assigned Supabase user account to manage milk
+              entries, transactions, summaries, and ledger cycles without extra
+              setup screens.
             </p>
           </div>
 

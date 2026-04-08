@@ -7,6 +7,7 @@ import { ArrowRight, LoaderCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 import { SummaryCard } from "./summary-card";
+import { useBusinessContext } from "./business-context-provider";
 import { fetchLedgerOverview } from "../lib/ledger";
 import { formatAmount, formatLedgerStatus } from "../lib/formatting";
 import type { LedgerOverviewData } from "../lib/types";
@@ -19,6 +20,7 @@ const toneStyles = {
 
 export function LedgerClient() {
   const supabase = useRef(createClient()).current;
+  const { businessId } = useBusinessContext();
   const [activeTab, setActiveTab] = useState<"cycles" | "balance">("cycles");
   const [overview, setOverview] = useState<LedgerOverviewData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,7 +34,7 @@ export function LedgerClient() {
       setError(null);
 
       try {
-        const data = await fetchLedgerOverview(supabase);
+        const data = await fetchLedgerOverview(supabase, businessId);
 
         if (isActive) {
           setOverview(data);
@@ -57,7 +59,7 @@ export function LedgerClient() {
     return () => {
       isActive = false;
     };
-  }, [supabase]);
+  }, [businessId, supabase]);
 
   if (isLoading) {
     return (

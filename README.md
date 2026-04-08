@@ -1,20 +1,19 @@
-# Dairy Manager
+# Dairy Management App
 
-A professional, full-featured dairy management web application for tracking milk collection, item transactions, and financial records. Built with Next.js, Tailwind CSS, and Supabase for reliability and modern UX.
+A multi-user dairy management web app built with Next.js, Tailwind CSS, and Supabase. Users log in with manually created Supabase Auth accounts, but there is still no signup flow in the UI.
 
-## Features
+## What It Includes
 
-- **Authentication**: Secure Supabase email/password login. No public dashboard access.
-- **Sidebar Navigation**: Quick access to Dashboard, Members, Milk Collection, Daily Summary, Financials, and Reports.
-- **Milk Collection Module**: Live calculation of milk amount (weight × fat × 8.5), shift-based entry, and validation.
-- **Item Credit/Debit**: Track item-based credits/debits linked to milk shifts, with notes and type selection.
-- **Records Module**: Date-range filtering, combined view of milk, item, and payment transactions. Add payments directly.
-- **Ledger Cycles**: Automated 10-day cycles (`1-10`, `11-20`, `21-end of month`), with close-cycle locking to prevent backdated changes.
-- **Financials & Reports**: Export filtered records as CSV or PDF. Ledger cycle PDF export supported.
-- **Member Portal**: Separate member access for transparency.
-- **Responsive UI**: Modern, mobile-friendly design with reusable components (Sidebar, DashboardShell, PageHeader, SummaryCard, AlertBanner, etc).
+- Supabase email/password login only
+- Multi-user business-based data isolation
+- Milk collection with live `weight x fat x 8.5` calculation
+- Item credit/debit tracking linked to date and shift
+- Records module with date filters, payments, CSV export, and PDF export
+- Automated 10-day ledger cycles with carry-forward balances
+- Closed-cycle protection to block backtracking into settled periods
+- Ledger overview, balance status tab, cycle detail page, and cycle PDF export
 
-## Tech Stack
+## Stack
 
 - Next.js App Router
 - React 19
@@ -22,36 +21,49 @@ A professional, full-featured dairy management web application for tracking milk
 - Supabase Auth + PostgreSQL
 - jsPDF for PDF export
 
-## Key Components
-
-- `Sidebar` / `DashboardSidebar`: Navigation for admin and dashboard views.
-- `MilkCollectionClient`: Handles milk entry and item transaction forms, validation, and today's activity tables.
-- `RecordsClient`: Date-filtered transaction management and export.
-- `LedgerClient` / `LedgerCycleDetailClient`: Ledger cycle overview, detail, and closing logic.
-- `LoginForm`, `LogoutButton`, `AlertBanner`, `SummaryCard`, `PageHeader`, `DashboardShell`, `SubmitButton`.
-
 ## Environment Setup
 
-1. Copy `.env.example` to `.env.local`:
+1. Copy `.env.example` to `.env.local`
    ```bash
    cp .env.example .env.local
    ```
-2. Add your Supabase project values:
+2. Add your Supabase project values
    ```bash
    NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
    ```
 
-## Supabase Setup
+## Supabase Setup For New Projects
 
 1. Create a Supabase project.
-2. Create one Auth user manually in the Supabase dashboard.
-3. Run the SQL in `supabase/schema.sql` to set up tables:
-   - `milk_entries`
-   - `transactions`
-   - `ledger_cycles`
-   - `item_transactions`
-4. Use the created user to log into the app.
+2. Run [supabase/schema.sql](/Users/shiv/Projects/Coding/dairy-manager/supabase/schema.sql).
+3. Create one or more Auth users manually in the Supabase dashboard.
+4. Insert one row into `public.businesses`.
+5. Insert one row per user into `public.business_members`, linking each user to that business.
+
+Core tables:
+
+- `businesses`
+- `business_members`
+- `milk_entries`
+- `transactions`
+- `ledger_cycles`
+- `item_transactions`
+
+## Existing Deployment Migration
+
+If you already deployed the single-user version, run [supabase/multi-user-migration.sql](/Users/shiv/Projects/Coding/dairy-manager/supabase/multi-user-migration.sql) in the Supabase SQL editor after editing the placeholder values:
+
+- Replace `'Main Dairy'` with your real business name if needed.
+- Replace `'owner@example.com'` and `'staff@example.com'` with the actual Supabase Auth emails that should access the business.
+
+That migration:
+
+- creates business tables
+- adds `business_id` to existing data tables
+- moves current rows into one business
+- adds memberships for your chosen users
+- replaces shared RLS with business-scoped RLS
 
 ## Local Development
 
@@ -60,7 +72,7 @@ npm install
 npm run dev
 ```
 
-Visit [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000).
 
 ## Verification
 
@@ -71,8 +83,8 @@ npm run build
 
 ## Notes
 
-- No signup flow in the UI; user must be created in Supabase.
+- No signup flow exists in the UI.
+- Users must be created and assigned manually in Supabase.
+- Each login is currently mapped to one business through `public.business_members`.
 - All database operations use the Supabase client.
-- Records page defaults to current month-to-date.
-- Closing a ledger cycle locks new entries for that period across all modules.
-- All components are modular and reusable for easy extension.
+- Closed ledger cycles prevent inserts, updates, and deletes for that period at the database layer.

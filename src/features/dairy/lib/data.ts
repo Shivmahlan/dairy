@@ -16,6 +16,7 @@ import type {
 function normalizeMilkEntry(row: Record<string, unknown>): MilkEntryRow {
   return {
     id: String(row.id),
+    business_id: String(row.business_id ?? ""),
     date: String(row.date),
     shift: row.shift === "evening" ? "evening" : "morning",
     weight: Number(row.weight ?? 0),
@@ -28,6 +29,7 @@ function normalizeMilkEntry(row: Record<string, unknown>): MilkEntryRow {
 function normalizeTransaction(row: Record<string, unknown>): TransactionRow {
   return {
     id: String(row.id),
+    business_id: String(row.business_id ?? ""),
     date: String(row.date),
     type: row.type === "debit" ? "debit" : "credit",
     amount: Number(row.amount ?? 0),
@@ -41,6 +43,7 @@ function normalizeItemTransaction(
 ): ItemTransactionRow {
   return {
     id: String(row.id),
+    business_id: String(row.business_id ?? ""),
     date: String(row.date),
     shift: row.shift === "evening" ? "evening" : "morning",
     item_name: String(row.item_name ?? ""),
@@ -53,11 +56,13 @@ function normalizeItemTransaction(
 
 export async function fetchMilkEntriesForDate(
   supabase: SupabaseClient,
+  businessId: string,
   date: string,
 ) {
   const { data, error } = await supabase
     .from("milk_entries")
-    .select("id, date, shift, weight, fat, total_amount, created_at")
+    .select("id, business_id, date, shift, weight, fat, total_amount, created_at")
+    .eq("business_id", businessId)
     .eq("date", date)
     .order("created_at", { ascending: false });
 
@@ -82,11 +87,15 @@ export async function fetchMilkEntriesForDate(
 
 export async function fetchItemTransactionsForDate(
   supabase: SupabaseClient,
+  businessId: string,
   date: string,
 ) {
   const { data, error } = await supabase
     .from("item_transactions")
-    .select("id, date, shift, item_name, type, amount, note, created_at")
+    .select(
+      "id, business_id, date, shift, item_name, type, amount, note, created_at",
+    )
+    .eq("business_id", businessId)
     .eq("date", date)
     .order("created_at", { ascending: false });
 
@@ -113,10 +122,10 @@ export async function insertMilkEntry(
   supabase: SupabaseClient,
   payload: Pick<
     MilkEntryRow,
-    "date" | "shift" | "weight" | "fat" | "total_amount"
+    "business_id" | "date" | "shift" | "weight" | "fat" | "total_amount"
   >,
 ) {
-  await assertCycleOpenForDate(supabase, payload.date);
+  await assertCycleOpenForDate(supabase, payload.business_id, payload.date);
 
   const { error } = await supabase.from("milk_entries").insert(payload);
 
@@ -129,10 +138,10 @@ export async function insertItemTransaction(
   supabase: SupabaseClient,
   payload: Pick<
     ItemTransactionRow,
-    "date" | "shift" | "item_name" | "type" | "amount" | "note"
+    "business_id" | "date" | "shift" | "item_name" | "type" | "amount" | "note"
   >,
 ) {
-  await assertCycleOpenForDate(supabase, payload.date);
+  await assertCycleOpenForDate(supabase, payload.business_id, payload.date);
 
   const { error } = await supabase.from("item_transactions").insert(payload);
 
@@ -143,6 +152,7 @@ export async function insertItemTransaction(
 
 export async function fetchRecords(
   supabase: SupabaseClient,
+  businessId: string,
   startDate: string,
   endDate: string,
 ) {
@@ -150,21 +160,26 @@ export async function fetchRecords(
     await Promise.all([
       supabase
         .from("milk_entries")
-        .select("id, date, shift, weight, fat, total_amount, created_at")
+        .select("id, business_id, date, shift, weight, fat, total_amount, created_at")
+        .eq("business_id", businessId)
         .gte("date", startDate)
         .lte("date", endDate)
         .order("date", { ascending: false })
         .order("created_at", { ascending: false }),
       supabase
         .from("transactions")
-        .select("id, date, type, amount, note, created_at")
+        .select("id, business_id, date, type, amount, note, created_at")
+        .eq("business_id", businessId)
         .gte("date", startDate)
         .lte("date", endDate)
         .order("date", { ascending: false })
         .order("created_at", { ascending: false }),
       supabase
         .from("item_transactions")
-        .select("id, date, shift, item_name, type, amount, note, created_at")
+        .select(
+          "id, business_id, date, shift, item_name, type, amount, note, created_at",
+        )
+        .eq("business_id", businessId)
         .gte("date", startDate)
         .lte("date", endDate)
         .order("date", { ascending: false })
@@ -198,9 +213,12 @@ export async function fetchRecords(
 
 export async function insertTransaction(
   supabase: SupabaseClient,
-  payload: Pick<TransactionRow, "date" | "type" | "amount" | "note">,
+  payload: Pick<
+    TransactionRow,
+    "business_id" | "date" | "type" | "amount" | "note"
+  >,
 ) {
-  await assertCycleOpenForDate(supabase, payload.date);
+  await assertCycleOpenForDate(supabase, payload.business_id, payload.date);
 
   const { error } = await supabase.from("transactions").insert(payload);
 

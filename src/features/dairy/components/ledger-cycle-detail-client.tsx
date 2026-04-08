@@ -7,6 +7,7 @@ import { ArrowLeft, FileText, LoaderCircle, Lock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 import { AlertBanner } from "./alert-banner";
+import { useBusinessContext } from "./business-context-provider";
 import { SummaryCard } from "./summary-card";
 import { exportLedgerCycleToPdf } from "../lib/export";
 import {
@@ -30,6 +31,7 @@ export function LedgerCycleDetailClient({
   cycleId,
 }: LedgerCycleDetailClientProps) {
   const supabase = useRef(createClient()).current;
+  const { businessId } = useBusinessContext();
   const [detail, setDetail] = useState<LedgerCycleDetailData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export function LedgerCycleDetailClient({
       setError(null);
 
       try {
-        const data = await fetchLedgerCycleDetail(supabase, cycleId);
+        const data = await fetchLedgerCycleDetail(supabase, businessId, cycleId);
 
         if (isActive) {
           setDetail(data);
@@ -69,14 +71,14 @@ export function LedgerCycleDetailClient({
     return () => {
       isActive = false;
     };
-  }, [cycleId, supabase]);
+  }, [businessId, cycleId, supabase]);
 
   async function handleCloseCycle() {
     setAlert(null);
     setIsClosing(true);
 
     try {
-      const updatedDetail = await closeLedgerCycle(supabase, cycleId);
+      const updatedDetail = await closeLedgerCycle(supabase, businessId, cycleId);
       setDetail(updatedDetail);
       setAlert({
         tone: "success",

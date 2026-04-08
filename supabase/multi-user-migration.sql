@@ -14,52 +14,66 @@ create table if not exists public.business_members (
   created_at timestamptz not null default timezone('utc', now())
 );
 
-create table if not exists public.milk_entries (
-  id uuid primary key default gen_random_uuid(),
-  business_id uuid not null references public.businesses(id) on delete cascade,
-  date date not null,
-  shift text not null check (shift in ('morning', 'evening')),
-  weight numeric not null check (weight >= 0),
-  fat numeric not null check (fat >= 0),
-  total_amount numeric not null check (total_amount >= 0),
-  created_at timestamptz not null default timezone('utc', now())
-);
+alter table public.milk_entries
+  add column if not exists business_id uuid references public.businesses(id) on delete cascade;
 
-create table if not exists public.transactions (
-  id uuid primary key default gen_random_uuid(),
-  business_id uuid not null references public.businesses(id) on delete cascade,
-  date date not null,
-  type text not null check (type in ('credit', 'debit')),
-  amount numeric not null check (amount >= 0),
-  note text,
-  created_at timestamptz not null default timezone('utc', now())
-);
+alter table public.transactions
+  add column if not exists business_id uuid references public.businesses(id) on delete cascade;
 
-create table if not exists public.ledger_cycles (
-  id uuid primary key default gen_random_uuid(),
-  business_id uuid not null references public.businesses(id) on delete cascade,
-  start_date date not null,
-  end_date date not null,
-  total_milk_amount numeric not null default 0,
-  total_credit numeric not null default 0,
-  total_debit numeric not null default 0,
-  net_balance numeric not null default 0,
-  carry_forward numeric not null default 0,
-  status text not null default 'open' check (status in ('open', 'closed')),
-  created_at timestamptz not null default timezone('utc', now())
-);
+alter table public.ledger_cycles
+  add column if not exists business_id uuid references public.businesses(id) on delete cascade;
 
-create table if not exists public.item_transactions (
-  id uuid primary key default gen_random_uuid(),
-  business_id uuid not null references public.businesses(id) on delete cascade,
-  date date not null,
-  shift text not null check (shift in ('morning', 'evening')),
-  item_name text not null,
-  type text not null check (type in ('credit', 'debit')),
-  amount numeric not null check (amount >= 0),
-  note text,
-  created_at timestamptz not null default timezone('utc', now())
-);
+alter table public.item_transactions
+  add column if not exists business_id uuid references public.businesses(id) on delete cascade;
+
+do $$
+declare
+  primary_business_id uuid;
+begin
+  insert into public.businesses (name)
+  values ('Main Dairy')
+  returning id into primary_business_id;
+
+  update public.milk_entries
+  set business_id = primary_business_id
+  where business_id is null;
+
+  update public.transactions
+  set business_id = primary_business_id
+  where business_id is null;
+
+  update public.ledger_cycles
+  set business_id = primary_business_id
+  where business_id is null;
+
+  update public.item_transactions
+  set business_id = primary_business_id
+  where business_id is null;
+
+  insert into public.business_members (business_id, user_id, role)
+  select
+    primary_business_id,
+    users.id,
+    case
+      when users.email = 'owner@example.com' then 'owner'
+      else 'member'
+    end
+  from auth.users as users
+  where users.email in ('owner@example.com', 'staff@example.com')
+  on conflict do nothing;
+end $$;
+
+alter table public.milk_entries
+  alter column business_id set not null;
+
+alter table public.transactions
+  alter column business_id set not null;
+
+alter table public.ledger_cycles
+  alter column business_id set not null;
+
+alter table public.item_transactions
+  alter column business_id set not null;
 
 do $$
 begin
@@ -214,6 +228,11 @@ alter table public.milk_entries enable row level security;
 alter table public.transactions enable row level security;
 alter table public.ledger_cycles enable row level security;
 alter table public.item_transactions enable row level security;
+
+drop policy if exists "authenticated users manage milk entries" on public.milk_entries;
+drop policy if exists "authenticated users manage transactions" on public.transactions;
+drop policy if exists "authenticated users manage ledger cycles" on public.ledger_cycles;
+drop policy if exists "authenticated users manage item transactions" on public.item_transactions;
 
 drop policy if exists "members view their businesses" on public.businesses;
 create policy "members view their businesses"

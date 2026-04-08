@@ -113,6 +113,7 @@ export function formatCycleLabel(startDate: string, endDate: string) {
 function normalizeLedgerCycle(row: Record<string, unknown>): LedgerCycleRow {
   return {
     id: String(row.id),
+    business_id: String(row.business_id ?? ""),
     start_date: String(row.start_date),
     end_date: String(row.end_date),
     total_milk_amount: Number(row.total_milk_amount ?? 0),
@@ -128,6 +129,7 @@ function normalizeLedgerCycle(row: Record<string, unknown>): LedgerCycleRow {
 function normalizeMilkEntry(row: Record<string, unknown>): MilkEntryRow {
   return {
     id: String(row.id),
+    business_id: String(row.business_id ?? ""),
     date: String(row.date),
     shift: row.shift === "evening" ? "evening" : "morning",
     weight: Number(row.weight ?? 0),
@@ -140,6 +142,7 @@ function normalizeMilkEntry(row: Record<string, unknown>): MilkEntryRow {
 function normalizeTransaction(row: Record<string, unknown>): TransactionRow {
   return {
     id: String(row.id),
+    business_id: String(row.business_id ?? ""),
     date: String(row.date),
     type: row.type === "debit" ? "debit" : "credit",
     amount: Number(row.amount ?? 0),
@@ -153,6 +156,7 @@ function normalizeItemTransaction(
 ): ItemTransactionRow {
   return {
     id: String(row.id),
+    business_id: String(row.business_id ?? ""),
     date: String(row.date),
     shift: row.shift === "evening" ? "evening" : "morning",
     item_name: String(row.item_name ?? ""),
@@ -165,12 +169,14 @@ function normalizeItemTransaction(
 
 async function fetchEdgeDate(
   supabase: SupabaseClient,
+  businessId: string,
   table: "milk_entries" | "transactions" | "item_transactions",
   direction: "asc" | "desc",
 ) {
   const { data, error } = await supabase
     .from(table)
     .select("date")
+    .eq("business_id", businessId)
     .order("date", { ascending: direction === "asc" })
     .limit(1);
 
@@ -181,20 +187,24 @@ async function fetchEdgeDate(
   return data?.[0]?.date ? String(data[0].date) : null;
 }
 
-async function determineLedgerDateRange(supabase: SupabaseClient) {
+async function determineLedgerDateRange(
+  supabase: SupabaseClient,
+  businessId: string,
+) {
   const [firstMilk, firstTransaction, firstItem, firstCycle, lastMilk, lastTransaction, lastItem] =
     await Promise.all([
-      fetchEdgeDate(supabase, "milk_entries", "asc"),
-      fetchEdgeDate(supabase, "transactions", "asc"),
-      fetchEdgeDate(supabase, "item_transactions", "asc"),
+      fetchEdgeDate(supabase, businessId, "milk_entries", "asc"),
+      fetchEdgeDate(supabase, businessId, "transactions", "asc"),
+      fetchEdgeDate(supabase, businessId, "item_transactions", "asc"),
       supabase
         .from("ledger_cycles")
         .select("start_date")
+        .eq("business_id", businessId)
         .order("start_date", { ascending: true })
         .limit(1),
-      fetchEdgeDate(supabase, "milk_entries", "desc"),
-      fetchEdgeDate(supabase, "transactions", "desc"),
-      fetchEdgeDate(supabase, "item_transactions", "desc"),
+      fetchEdgeDate(supabase, businessId, "milk_entries", "desc"),
+      fetchEdgeDate(supabase, businessId, "transactions", "desc"),
+      fetchEdgeDate(supabase, businessId, "item_transactions", "desc"),
     ]);
 
   const firstDates = [
@@ -242,10 +252,12 @@ function buildCyclesBetween(startDate: string, endDate: string) {
 
 async function ensureLedgerCyclesForRange(
   supabase: SupabaseClient,
+  businessId: string,
   startDate: string,
   endDate: string,
 ) {
   const cycleRows = buildCyclesBetween(startDate, endDate).map((cycle) => ({
+    business_id: businessId,
     start_date: cycle.startDate,
     end_date: cycle.endDate,
     total_milk_amount: 0,
@@ -261,7 +273,7 @@ async function ensureLedgerCyclesForRange(
   }
 
   const { error } = await supabase.from("ledger_cycles").upsert(cycleRows, {
-    onConflict: "start_date,end_date",
+    onConflict: "business_id,start_date,end_date",
     ignoreDuplicates: true,
   });
 
@@ -298,16 +310,23 @@ function buildComputedCycles(cycles: LedgerCycleRow[]) {
   });
 }
 
-export async function syncLedgerCycles(supabase: SupabaseClient) {
-  const { startDate, endDate } = await determineLedgerDateRange(supabase);
+export async function syncLedgerCycles(
+  supabase: SupabaseClient,
+  businessId: string,
+) {
+  const { startDate, endDate } = await determineLedgerDateRange(
+    supabase,
+    businessId,
+  );
 
-  await ensureLedgerCyclesForRange(supabase, startDate, endDate);
+  await ensureLedgerCyclesForRange(supabase, businessId, startDate, endDate);
 
   const { data: cyclesData, error: cyclesError } = await supabase
     .from("ledger_cycles")
     .select(
-      "id, start_date, end_date, total_milk_amount, total_credit, total_debit, net_balance, carry_forward, status, created_at",
+      "id, business_id, start_date, end_date, total_milk_amount, total_credit, total_debit, net_balance, carry_forward, status, created_at",
     )
+    .eq("business_id", businessId)
     .order("start_date", { ascending: true });
 
   if (cyclesError) {
@@ -328,17 +347,22 @@ export async function syncLedgerCycles(supabase: SupabaseClient) {
   const [milkResponse, paymentsResponse, itemsResponse] = await Promise.all([
     supabase
       .from("milk_entries")
-      .select("id, date, shift, weight, fat, total_amount, created_at")
+      .select("id, business_id, date, shift, weight, fat, total_amount, created_at")
+      .eq("business_id", businessId)
       .gte("date", overallStart)
       .lte("date", overallEnd),
     supabase
       .from("transactions")
-      .select("id, date, type, amount, note, created_at")
+      .select("id, business_id, date, type, amount, note, created_at")
+      .eq("business_id", businessId)
       .gte("date", overallStart)
       .lte("date", overallEnd),
     supabase
       .from("item_transactions")
-      .select("id, date, shift, item_name, type, amount, note, created_at")
+      .select(
+        "id, business_id, date, shift, item_name, type, amount, note, created_at",
+      )
+      .eq("business_id", businessId)
       .gte("date", overallStart)
       .lte("date", overallEnd),
   ]);
@@ -420,6 +444,7 @@ export async function syncLedgerCycles(supabase: SupabaseClient) {
 
     return {
       id: cycle.id,
+      business_id: cycle.business_id,
       start_date: cycle.start_date,
       end_date: cycle.end_date,
       total_milk_amount: totalMilkAmount,
@@ -453,8 +478,9 @@ export async function syncLedgerCycles(supabase: SupabaseClient) {
 
 export async function fetchLedgerOverview(
   supabase: SupabaseClient,
+  businessId: string,
 ): Promise<LedgerOverviewData> {
-  const cycles = await syncLedgerCycles(supabase);
+  const cycles = await syncLedgerCycles(supabase, businessId);
   const currentCycle =
     cycles.find((cycle) => cycle.is_current) ?? cycles.at(-1) ?? null;
   const currentCycleBalance = getCurrentCycleBalance(currentCycle);
@@ -473,9 +499,10 @@ export async function fetchLedgerOverview(
 
 export async function fetchLedgerCycleDetail(
   supabase: SupabaseClient,
+  businessId: string,
   cycleId: string,
 ): Promise<LedgerCycleDetailData> {
-  const cycles = await syncLedgerCycles(supabase);
+  const cycles = await syncLedgerCycles(supabase, businessId);
   const cycle = cycles.find((entry) => entry.id === cycleId);
 
   if (!cycle) {
@@ -485,21 +512,26 @@ export async function fetchLedgerCycleDetail(
   const [milkResponse, paymentsResponse, itemsResponse] = await Promise.all([
     supabase
       .from("milk_entries")
-      .select("id, date, shift, weight, fat, total_amount, created_at")
+      .select("id, business_id, date, shift, weight, fat, total_amount, created_at")
+      .eq("business_id", businessId)
       .gte("date", cycle.start_date)
       .lte("date", cycle.end_date)
       .order("date", { ascending: true })
       .order("created_at", { ascending: true }),
     supabase
       .from("transactions")
-      .select("id, date, type, amount, note, created_at")
+      .select("id, business_id, date, type, amount, note, created_at")
+      .eq("business_id", businessId)
       .gte("date", cycle.start_date)
       .lte("date", cycle.end_date)
       .order("date", { ascending: true })
       .order("created_at", { ascending: true }),
     supabase
       .from("item_transactions")
-      .select("id, date, shift, item_name, type, amount, note, created_at")
+      .select(
+        "id, business_id, date, shift, item_name, type, amount, note, created_at",
+      )
+      .eq("business_id", businessId)
       .gte("date", cycle.start_date)
       .lte("date", cycle.end_date)
       .order("date", { ascending: true })
@@ -534,15 +566,17 @@ export async function fetchLedgerCycleDetail(
 
 export async function fetchCycleLockForDate(
   supabase: SupabaseClient,
+  businessId: string,
   date: string,
 ): Promise<CycleLockState> {
   const period = getCyclePeriodForDate(date);
 
-  await ensureLedgerCyclesForRange(supabase, date, date);
+  await ensureLedgerCyclesForRange(supabase, businessId, date, date);
 
   const { data, error } = await supabase
     .from("ledger_cycles")
     .select("status")
+    .eq("business_id", businessId)
     .eq("start_date", period.startDate)
     .eq("end_date", period.endDate)
     .maybeSingle();
@@ -562,9 +596,10 @@ export async function fetchCycleLockForDate(
 
 export async function assertCycleOpenForDate(
   supabase: SupabaseClient,
+  businessId: string,
   date: string,
 ) {
-  const lockState = await fetchCycleLockForDate(supabase, date);
+  const lockState = await fetchCycleLockForDate(supabase, businessId, date);
 
   if (lockState.isLocked) {
     throw new Error(
@@ -577,9 +612,10 @@ export async function assertCycleOpenForDate(
 
 export async function closeLedgerCycle(
   supabase: SupabaseClient,
+  businessId: string,
   cycleId: string,
 ) {
-  const cycles = await syncLedgerCycles(supabase);
+  const cycles = await syncLedgerCycles(supabase, businessId);
   const cycleIndex = cycles.findIndex((cycle) => cycle.id === cycleId);
 
   if (cycleIndex === -1) {
@@ -610,11 +646,12 @@ export async function closeLedgerCycle(
   const { error } = await supabase
     .from("ledger_cycles")
     .update({ status: "closed" })
+    .eq("business_id", businessId)
     .eq("id", cycleId);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return fetchLedgerCycleDetail(supabase, cycleId);
+  return fetchLedgerCycleDetail(supabase, businessId, cycleId);
 }

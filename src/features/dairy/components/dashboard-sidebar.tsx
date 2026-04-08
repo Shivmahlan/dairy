@@ -28,9 +28,13 @@ const items = [
 
 interface DashboardSidebarProps {
   userEmail: string;
+  businessName: string;
 }
 
-export function DashboardSidebar({ userEmail }: DashboardSidebarProps) {
+export function DashboardSidebar({
+  userEmail,
+  businessName,
+}: DashboardSidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -75,6 +79,14 @@ export function DashboardSidebar({ userEmail }: DashboardSidebarProps) {
         </nav>
 
         <div className="mt-auto space-y-4 rounded-3xl border border-border/80 bg-surface p-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
+              Business
+            </p>
+            <p className="mt-2 text-sm font-semibold text-foreground">
+              {businessName}
+            </p>
+          </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
               Signed in as
