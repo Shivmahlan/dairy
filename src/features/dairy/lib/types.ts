@@ -9,12 +9,15 @@ export interface BusinessContext {
   userEmail: string;
   businessId: string;
   businessName: string;
+  milkRate: number;
   role: BusinessRole;
 }
 
 export interface MilkEntryRow {
   id: string;
   business_id: string;
+  created_by_user_id: string;
+  created_by_email: string;
   date: string;
   shift: MilkShift;
   weight: number;
@@ -26,6 +29,8 @@ export interface MilkEntryRow {
 export interface TransactionRow {
   id: string;
   business_id: string;
+  created_by_user_id: string;
+  created_by_email: string;
   date: string;
   type: TransactionType;
   amount: number;
@@ -36,6 +41,8 @@ export interface TransactionRow {
 export interface ItemTransactionRow {
   id: string;
   business_id: string;
+  created_by_user_id: string;
+  created_by_email: string;
   date: string;
   shift: MilkShift;
   item_name: string;
@@ -50,6 +57,8 @@ export interface CombinedRecordRow {
   date: string;
   entry_type: "milk" | "payment" | "item";
   type: "milk" | TransactionType;
+  created_by_user_id: string;
+  created_by_email: string;
   shift: MilkShift | null;
   amount: number;
   item_name: string | null;
@@ -62,6 +71,12 @@ export interface RecordsSummary {
   totalCredit: number;
   totalDebit: number;
   remainingBalance: number;
+}
+
+export interface RecordGroup {
+  createdByEmail: string;
+  records: CombinedRecordRow[];
+  summary: RecordsSummary;
 }
 
 export interface AlertState {

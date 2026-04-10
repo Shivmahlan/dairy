@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import { AlertBanner } from "./alert-banner";
 import { useBusinessContext } from "./business-context-provider";
 import { calculateTotalAmount } from "../lib/calculations";
+import { updateBusinessMilkRate } from "../lib/business";
 import {
   SHIFT_OPTIONS,
   TRANSACTION_TYPE_OPTIONS,
@@ -44,12 +45,19 @@ import type {
 import {
   validateItemTransaction,
   validateMilkEntry,
+  validateMilkRate,
 } from "../lib/validation";
 
 export function MilkCollectionClient() {
   const today = getTodayDateString();
   const supabase = useRef(createClient()).current;
-  const { businessId } = useBusinessContext();
+  const {
+    businessId,
+    milkRate: savedMilkRate,
+    updateMilkRate,
+    userEmail,
+    userId,
+  } = useBusinessContext();
   const [milkForm, setMilkForm] = useState<MilkEntryInput>({
     date: today,
     shift: "morning",
@@ -70,14 +78,24 @@ export function MilkCollectionClient() {
   const [tablesError, setTablesError] = useState<string | null>(null);
   const [isSavingMilk, setIsSavingMilk] = useState(false);
   const [isSavingItem, setIsSavingItem] = useState(false);
+  const [isSavingRate, setIsSavingRate] = useState(false);
   const [milkAlert, setMilkAlert] = useState<AlertState | null>(null);
   const [itemAlert, setItemAlert] = useState<AlertState | null>(null);
+  const [rateAlert, setRateAlert] = useState<AlertState | null>(null);
   const [milkLock, setMilkLock] = useState<CycleLockState | null>(null);
   const [itemLock, setItemLock] = useState<CycleLockState | null>(null);
+  const [activeMilkRate, setActiveMilkRate] = useState(savedMilkRate);
+  const [milkRateInput, setMilkRateInput] = useState(String(savedMilkRate));
+
+  useEffect(() => {
+    setActiveMilkRate(savedMilkRate);
+    setMilkRateInput(String(savedMilkRate));
+  }, [savedMilkRate]);
 
   const liveTotal = calculateTotalAmount(
     Number(milkForm.weight || 0),
     Number(milkForm.fat || 0),
+    activeMilkRate,
   );
 
   async function refreshTodayActivity() {
@@ -214,7 +232,7 @@ export function MilkCollectionClient() {
       return;
     }
 
-    const validation = validateMilkEntry(milkForm);
+    const validation = validateMilkEntry(milkForm, activeMilkRate);
 
     if (validation.error || !validation.payload) {
       setMilkAlert({
@@ -230,6 +248,8 @@ export function MilkCollectionClient() {
       await insertMilkEntry(supabase, {
         ...validation.payload,
         business_id: businessId,
+        created_by_user_id: userId,
+        created_by_email: userEmail,
       });
 
       if (milkForm.date === today) {
@@ -284,6 +304,8 @@ export function MilkCollectionClient() {
       await insertItemTransaction(supabase, {
         ...validation.payload,
         business_id: businessId,
+        created_by_user_id: userId,
+        created_by_email: userEmail,
       });
 
       if (itemForm.date === today) {
@@ -313,6 +335,49 @@ export function MilkCollectionClient() {
     }
   }
 
+  async function handleMilkRateSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRateAlert(null);
+
+    const validation = validateMilkRate(milkRateInput);
+
+    if (validation.error || validation.value === undefined) {
+      setRateAlert({
+        tone: "error",
+        message: validation.error ?? "Invalid milk rate.",
+      });
+      return;
+    }
+
+    setIsSavingRate(true);
+
+    try {
+      const nextMilkRate = await updateBusinessMilkRate(
+        supabase,
+        businessId,
+        validation.value,
+      );
+
+      setActiveMilkRate(nextMilkRate);
+      setMilkRateInput(String(nextMilkRate));
+      updateMilkRate(nextMilkRate);
+      setRateAlert({
+        tone: "success",
+        message: "Milk rate updated. New milk entries will use this rate.",
+      });
+    } catch (error) {
+      setRateAlert({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to update the milk rate.",
+      });
+    } finally {
+      setIsSavingRate(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid gap-6 xl:grid-cols-2">
@@ -324,9 +389,55 @@ export function MilkCollectionClient() {
             <div>
               <h2 className="text-xl font-semibold text-foreground">Milk entry</h2>
               <p className="mt-1 text-sm leading-6 text-muted">
-                Total amount updates live using weight x fat x 8.5.
+                Total amount updates live using the saved milk rate for this business.
               </p>
             </div>
+          </div>
+
+          <div className="mt-5 rounded-3xl border border-border bg-surface p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-foreground">Milk rate</h3>
+                <p className="mt-1 text-sm leading-6 text-muted">
+                  This saved rate is used for all new milk calculations until you
+                  change it again.
+                </p>
+              </div>
+              <p className="text-sm font-medium text-foreground">
+                Active rate: {formatAmount(activeMilkRate)}
+              </p>
+            </div>
+
+            <div className="mt-4">
+              <AlertBanner alert={rateAlert} />
+            </div>
+
+            <form
+              onSubmit={handleMilkRateSubmit}
+              className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
+            >
+              <label className="flex-1 space-y-2">
+                <span className="text-sm font-medium text-foreground">Set milk rate</span>
+                <input
+                  required
+                  min="0"
+                  step="0.01"
+                  type="number"
+                  value={milkRateInput}
+                  onChange={(event) => setMilkRateInput(event.target.value)}
+                  placeholder="8.50"
+                  className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm"
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={isSavingRate}
+                className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white transition hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-70 sm:min-w-40"
+              >
+                {isSavingRate ? "Saving rate..." : "Save rate"}
+              </button>
+            </form>
           </div>
 
           <div className="mt-4 rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-muted">
@@ -432,7 +543,7 @@ export function MilkCollectionClient() {
                 {formatAmount(liveTotal)}
               </p>
               <p className="mt-2 text-sm leading-6 text-muted">
-                Formula: weight x fat x 8.5
+                Formula: weight x fat x {formatAmount(activeMilkRate)}
               </p>
             </div>
 

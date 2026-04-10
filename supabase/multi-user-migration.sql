@@ -3,6 +3,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.businesses (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  milk_rate numeric not null default 8.5 constraint businesses_milk_rate_check check (milk_rate >= 0),
   created_at timestamptz not null default timezone('utc', now())
 );
 
@@ -14,17 +15,48 @@ create table if not exists public.business_members (
   created_at timestamptz not null default timezone('utc', now())
 );
 
+alter table public.businesses
+  add column if not exists milk_rate numeric;
+
+update public.businesses
+set milk_rate = 8.5
+where milk_rate is null;
+
+alter table public.businesses
+  alter column milk_rate set default 8.5;
+
+alter table public.businesses
+  alter column milk_rate set not null;
+
 alter table public.milk_entries
   add column if not exists business_id uuid references public.businesses(id) on delete cascade;
 
+alter table public.milk_entries
+  add column if not exists created_by_user_id uuid;
+
+alter table public.milk_entries
+  add column if not exists created_by_email text;
+
 alter table public.transactions
   add column if not exists business_id uuid references public.businesses(id) on delete cascade;
+
+alter table public.transactions
+  add column if not exists created_by_user_id uuid;
+
+alter table public.transactions
+  add column if not exists created_by_email text;
 
 alter table public.ledger_cycles
   add column if not exists business_id uuid references public.businesses(id) on delete cascade;
 
 alter table public.item_transactions
   add column if not exists business_id uuid references public.businesses(id) on delete cascade;
+
+alter table public.item_transactions
+  add column if not exists created_by_user_id uuid;
+
+alter table public.item_transactions
+  add column if not exists created_by_email text;
 
 do $$
 declare
@@ -63,11 +95,83 @@ begin
   on conflict do nothing;
 end $$;
 
+with default_record_owner as (
+  select distinct on (members.business_id)
+    members.business_id,
+    members.user_id,
+    coalesce(users.email, 'Unknown user') as email
+  from public.business_members as members
+  left join auth.users as users on users.id = members.user_id
+  order by
+    members.business_id,
+    case when members.role = 'owner' then 0 else 1 end,
+    members.created_at
+)
+update public.milk_entries as entries
+set
+  created_by_user_id = owners.user_id,
+  created_by_email = owners.email
+from default_record_owner as owners
+where entries.business_id = owners.business_id
+  and (entries.created_by_user_id is null or entries.created_by_email is null);
+
+with default_record_owner as (
+  select distinct on (members.business_id)
+    members.business_id,
+    members.user_id,
+    coalesce(users.email, 'Unknown user') as email
+  from public.business_members as members
+  left join auth.users as users on users.id = members.user_id
+  order by
+    members.business_id,
+    case when members.role = 'owner' then 0 else 1 end,
+    members.created_at
+)
+update public.transactions as entries
+set
+  created_by_user_id = owners.user_id,
+  created_by_email = owners.email
+from default_record_owner as owners
+where entries.business_id = owners.business_id
+  and (entries.created_by_user_id is null or entries.created_by_email is null);
+
+with default_record_owner as (
+  select distinct on (members.business_id)
+    members.business_id,
+    members.user_id,
+    coalesce(users.email, 'Unknown user') as email
+  from public.business_members as members
+  left join auth.users as users on users.id = members.user_id
+  order by
+    members.business_id,
+    case when members.role = 'owner' then 0 else 1 end,
+    members.created_at
+)
+update public.item_transactions as entries
+set
+  created_by_user_id = owners.user_id,
+  created_by_email = owners.email
+from default_record_owner as owners
+where entries.business_id = owners.business_id
+  and (entries.created_by_user_id is null or entries.created_by_email is null);
+
 alter table public.milk_entries
   alter column business_id set not null;
 
+alter table public.milk_entries
+  alter column created_by_user_id set not null;
+
+alter table public.milk_entries
+  alter column created_by_email set not null;
+
 alter table public.transactions
   alter column business_id set not null;
+
+alter table public.transactions
+  alter column created_by_user_id set not null;
+
+alter table public.transactions
+  alter column created_by_email set not null;
 
 alter table public.ledger_cycles
   alter column business_id set not null;
@@ -75,8 +179,23 @@ alter table public.ledger_cycles
 alter table public.item_transactions
   alter column business_id set not null;
 
+alter table public.item_transactions
+  alter column created_by_user_id set not null;
+
+alter table public.item_transactions
+  alter column created_by_email set not null;
+
 do $$
 begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'businesses_milk_rate_check'
+  ) then
+    alter table public.businesses
+      add constraint businesses_milk_rate_check
+      check (milk_rate >= 0);
+  end if;
+
   if not exists (
     select 1 from pg_constraint
     where conname = 'business_members_business_id_user_id_key'
@@ -111,11 +230,20 @@ create index if not exists idx_business_members_user_id
 create index if not exists idx_milk_entries_business_id_date
   on public.milk_entries (business_id, date);
 
+create index if not exists idx_milk_entries_business_id_creator_date
+  on public.milk_entries (business_id, created_by_email, date);
+
 create index if not exists idx_transactions_business_id_date
   on public.transactions (business_id, date);
 
+create index if not exists idx_transactions_business_id_creator_date
+  on public.transactions (business_id, created_by_email, date);
+
 create index if not exists idx_item_transactions_business_id_date
   on public.item_transactions (business_id, date);
+
+create index if not exists idx_item_transactions_business_id_creator_date
+  on public.item_transactions (business_id, created_by_email, date);
 
 create index if not exists idx_ledger_cycles_business_id_start_date
   on public.ledger_cycles (business_id, start_date);
@@ -240,6 +368,14 @@ on public.businesses
 for select
 to authenticated
 using (public.is_business_member(id));
+
+drop policy if exists "members update their businesses" on public.businesses;
+create policy "members update their businesses"
+on public.businesses
+for update
+to authenticated
+using (public.is_business_member(id))
+with check (public.is_business_member(id));
 
 drop policy if exists "users view their own membership" on public.business_members;
 create policy "users view their own membership"

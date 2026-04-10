@@ -56,9 +56,10 @@ export function exportRecordsToCsv(
     ["Total Debit", formatAmount(summary.totalDebit)],
     ["Remaining Balance", formatAmount(summary.remainingBalance)],
     [],
-    ["Date", "Type", "Shift", "Amount", "Note"],
+    ["Date", "Created By", "Type", "Shift", "Amount", "Note"],
     ...records.map((record) => [
       record.date,
+      record.created_by_email,
       formatTransactionType(record.type),
       formatShiftLabel(record.shift),
       formatAmount(record.amount),
@@ -85,6 +86,7 @@ export function exportRecordsToPdf(
   const doc = new jsPDF({
     unit: "pt",
     format: "a4",
+    orientation: "landscape",
   });
 
   doc.setFontSize(18);
@@ -99,9 +101,10 @@ export function exportRecordsToPdf(
 
   autoTable(doc, {
     startY: 174,
-    head: [["Date", "Type", "Shift", "Amount", "Note"]],
+    head: [["Date", "Created By", "Type", "Shift", "Amount", "Note"]],
     body: records.map((record) => [
       record.date,
+      record.created_by_email,
       formatTransactionType(record.type),
       formatShiftLabel(record.shift),
       formatAmount(record.amount),

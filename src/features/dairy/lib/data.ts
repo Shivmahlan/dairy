@@ -17,6 +17,8 @@ function normalizeMilkEntry(row: Record<string, unknown>): MilkEntryRow {
   return {
     id: String(row.id),
     business_id: String(row.business_id ?? ""),
+    created_by_user_id: String(row.created_by_user_id ?? ""),
+    created_by_email: String(row.created_by_email ?? "Unknown user"),
     date: String(row.date),
     shift: row.shift === "evening" ? "evening" : "morning",
     weight: Number(row.weight ?? 0),
@@ -30,6 +32,8 @@ function normalizeTransaction(row: Record<string, unknown>): TransactionRow {
   return {
     id: String(row.id),
     business_id: String(row.business_id ?? ""),
+    created_by_user_id: String(row.created_by_user_id ?? ""),
+    created_by_email: String(row.created_by_email ?? "Unknown user"),
     date: String(row.date),
     type: row.type === "debit" ? "debit" : "credit",
     amount: Number(row.amount ?? 0),
@@ -44,6 +48,8 @@ function normalizeItemTransaction(
   return {
     id: String(row.id),
     business_id: String(row.business_id ?? ""),
+    created_by_user_id: String(row.created_by_user_id ?? ""),
+    created_by_email: String(row.created_by_email ?? "Unknown user"),
     date: String(row.date),
     shift: row.shift === "evening" ? "evening" : "morning",
     item_name: String(row.item_name ?? ""),
@@ -61,7 +67,9 @@ export async function fetchMilkEntriesForDate(
 ) {
   const { data, error } = await supabase
     .from("milk_entries")
-    .select("id, business_id, date, shift, weight, fat, total_amount, created_at")
+    .select(
+      "id, business_id, created_by_user_id, created_by_email, date, shift, weight, fat, total_amount, created_at",
+    )
     .eq("business_id", businessId)
     .eq("date", date)
     .order("created_at", { ascending: false });
@@ -93,7 +101,7 @@ export async function fetchItemTransactionsForDate(
   const { data, error } = await supabase
     .from("item_transactions")
     .select(
-      "id, business_id, date, shift, item_name, type, amount, note, created_at",
+      "id, business_id, created_by_user_id, created_by_email, date, shift, item_name, type, amount, note, created_at",
     )
     .eq("business_id", businessId)
     .eq("date", date)
@@ -122,7 +130,14 @@ export async function insertMilkEntry(
   supabase: SupabaseClient,
   payload: Pick<
     MilkEntryRow,
-    "business_id" | "date" | "shift" | "weight" | "fat" | "total_amount"
+    | "business_id"
+    | "created_by_user_id"
+    | "created_by_email"
+    | "date"
+    | "shift"
+    | "weight"
+    | "fat"
+    | "total_amount"
   >,
 ) {
   await assertCycleOpenForDate(supabase, payload.business_id, payload.date);
@@ -138,7 +153,15 @@ export async function insertItemTransaction(
   supabase: SupabaseClient,
   payload: Pick<
     ItemTransactionRow,
-    "business_id" | "date" | "shift" | "item_name" | "type" | "amount" | "note"
+    | "business_id"
+    | "created_by_user_id"
+    | "created_by_email"
+    | "date"
+    | "shift"
+    | "item_name"
+    | "type"
+    | "amount"
+    | "note"
   >,
 ) {
   await assertCycleOpenForDate(supabase, payload.business_id, payload.date);
@@ -160,7 +183,9 @@ export async function fetchRecords(
     await Promise.all([
       supabase
         .from("milk_entries")
-        .select("id, business_id, date, shift, weight, fat, total_amount, created_at")
+        .select(
+          "id, business_id, created_by_user_id, created_by_email, date, shift, weight, fat, total_amount, created_at",
+        )
         .eq("business_id", businessId)
         .gte("date", startDate)
         .lte("date", endDate)
@@ -168,7 +193,9 @@ export async function fetchRecords(
         .order("created_at", { ascending: false }),
       supabase
         .from("transactions")
-        .select("id, business_id, date, type, amount, note, created_at")
+        .select(
+          "id, business_id, created_by_user_id, created_by_email, date, type, amount, note, created_at",
+        )
         .eq("business_id", businessId)
         .gte("date", startDate)
         .lte("date", endDate)
@@ -177,7 +204,7 @@ export async function fetchRecords(
       supabase
         .from("item_transactions")
         .select(
-          "id, business_id, date, shift, item_name, type, amount, note, created_at",
+          "id, business_id, created_by_user_id, created_by_email, date, shift, item_name, type, amount, note, created_at",
         )
         .eq("business_id", businessId)
         .gte("date", startDate)
@@ -215,12 +242,123 @@ export async function insertTransaction(
   supabase: SupabaseClient,
   payload: Pick<
     TransactionRow,
-    "business_id" | "date" | "type" | "amount" | "note"
+    | "business_id"
+    | "created_by_user_id"
+    | "created_by_email"
+    | "date"
+    | "type"
+    | "amount"
+    | "note"
   >,
 ) {
   await assertCycleOpenForDate(supabase, payload.business_id, payload.date);
 
   const { error } = await supabase.from("transactions").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function insertMilkEntriesBulk(
+  supabase: SupabaseClient,
+  payloads: Array<
+    Pick<
+      MilkEntryRow,
+      | "business_id"
+      | "created_by_user_id"
+      | "created_by_email"
+      | "date"
+      | "shift"
+      | "weight"
+      | "fat"
+      | "total_amount"
+    >
+  >,
+) {
+  if (!payloads.length) {
+    return;
+  }
+
+  const uniqueDates = [...new Set(payloads.map((payload) => payload.date))];
+
+  await Promise.all(
+    uniqueDates.map((date) =>
+      assertCycleOpenForDate(supabase, payloads[0].business_id, date),
+    ),
+  );
+
+  const { error } = await supabase.from("milk_entries").insert(payloads);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function insertTransactionsBulk(
+  supabase: SupabaseClient,
+  payloads: Array<
+    Pick<
+      TransactionRow,
+      | "business_id"
+      | "created_by_user_id"
+      | "created_by_email"
+      | "date"
+      | "type"
+      | "amount"
+      | "note"
+    >
+  >,
+) {
+  if (!payloads.length) {
+    return;
+  }
+
+  const uniqueDates = [...new Set(payloads.map((payload) => payload.date))];
+
+  await Promise.all(
+    uniqueDates.map((date) =>
+      assertCycleOpenForDate(supabase, payloads[0].business_id, date),
+    ),
+  );
+
+  const { error } = await supabase.from("transactions").insert(payloads);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function insertItemTransactionsBulk(
+  supabase: SupabaseClient,
+  payloads: Array<
+    Pick<
+      ItemTransactionRow,
+      | "business_id"
+      | "created_by_user_id"
+      | "created_by_email"
+      | "date"
+      | "shift"
+      | "item_name"
+      | "type"
+      | "amount"
+      | "note"
+    >
+  >,
+) {
+  if (!payloads.length) {
+    return;
+  }
+
+  const uniqueDates = [...new Set(payloads.map((payload) => payload.date))];
+
+  await Promise.all(
+    uniqueDates.map((date) =>
+      assertCycleOpenForDate(supabase, payloads[0].business_id, date),
+    ),
+  );
+
+  const { error } = await supabase.from("item_transactions").insert(payloads);
 
   if (error) {
     throw new Error(error.message);
@@ -238,6 +376,8 @@ export function buildCombinedRecords(
       date: entry.date,
       entry_type: "milk" as const,
       type: "milk" as const,
+      created_by_user_id: entry.created_by_user_id,
+      created_by_email: entry.created_by_email,
       shift: entry.shift,
       amount: entry.total_amount,
       item_name: null,
@@ -249,6 +389,8 @@ export function buildCombinedRecords(
       date: transaction.date,
       entry_type: "payment" as const,
       type: transaction.type,
+      created_by_user_id: transaction.created_by_user_id,
+      created_by_email: transaction.created_by_email,
       shift: null,
       amount: transaction.amount,
       item_name: null,
@@ -260,6 +402,8 @@ export function buildCombinedRecords(
       date: transaction.date,
       entry_type: "item" as const,
       type: transaction.type,
+      created_by_user_id: transaction.created_by_user_id,
+      created_by_email: transaction.created_by_email,
       shift: transaction.shift,
       amount: transaction.amount,
       item_name: transaction.item_name,

@@ -1,5 +1,6 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 
+import { DEFAULT_MILK_RATE } from "./constants";
 import type { BusinessContext, BusinessRole } from "./types";
 
 interface BusinessMembershipRow {
@@ -8,7 +9,18 @@ interface BusinessMembershipRow {
   business: {
     id: string;
     name: string;
+    milk_rate: number | string | null;
   } | null;
+}
+
+function normalizeMilkRate(value: unknown) {
+  const parsedValue = Number(value ?? DEFAULT_MILK_RATE);
+
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+    return DEFAULT_MILK_RATE;
+  }
+
+  return parsedValue;
 }
 
 function normalizeMembership(
@@ -21,6 +33,7 @@ function normalizeMembership(
     userEmail,
     businessId: row.business_id,
     businessName: row.business?.name ?? "Assigned business",
+    milkRate: normalizeMilkRate(row.business?.milk_rate),
     role: row.role ?? "member",
   };
 }
@@ -43,7 +56,7 @@ export async function fetchBusinessContext(
 
   const { data, error } = await supabase
     .from("business_members")
-    .select("business_id, role, business:businesses(id, name)")
+    .select("business_id, role, business:businesses(id, name, milk_rate)")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -72,4 +85,27 @@ export async function requireBusinessContext(supabase: SupabaseClient) {
   }
 
   return businessContext;
+}
+
+export async function updateBusinessMilkRate(
+  supabase: SupabaseClient,
+  businessId: string,
+  milkRate: number,
+) {
+  if (!Number.isFinite(milkRate) || milkRate < 0) {
+    throw new Error("Milk rate must be a valid non-negative number.");
+  }
+
+  const { data, error } = await supabase
+    .from("businesses")
+    .update({ milk_rate: milkRate })
+    .eq("id", businessId)
+    .select("milk_rate")
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return normalizeMilkRate((data as { milk_rate?: unknown } | null)?.milk_rate);
 }

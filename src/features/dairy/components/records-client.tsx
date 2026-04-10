@@ -1,19 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, FileText, LoaderCircle, Plus } from "lucide-react";
+import { Download, FileText, LoaderCircle, Plus, Upload } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 
 import { AlertBanner } from "./alert-banner";
 import { useBusinessContext } from "./business-context-provider";
 import { SummaryCard } from "./summary-card";
-import { buildSummary } from "../lib/calculations";
+import {
+  buildSummary,
+  groupCombinedRecordsByUser,
+} from "../lib/calculations";
 import { TRANSACTION_TYPE_OPTIONS } from "../lib/constants";
 import {
   buildCombinedRecords,
   fetchRecords,
+  insertItemTransactionsBulk,
+  insertMilkEntriesBulk,
   insertTransaction,
+  insertTransactionsBulk,
 } from "../lib/data";
 import {
   formatDateRange,
@@ -28,6 +34,7 @@ import {
   formatShiftLabel,
   formatTransactionType,
 } from "../lib/formatting";
+import { parseRecordsCsvImport } from "../lib/import";
 import { fetchCycleLockForDate } from "../lib/ledger";
 import type {
   AlertState,
@@ -49,7 +56,8 @@ const initialTransactionForm = (today: string): TransactionInput => ({
 export function RecordsClient() {
   const today = getTodayDateString();
   const supabase = useRef(createClient()).current;
-  const { businessId } = useBusinessContext();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { businessId, milkRate, userEmail, userId } = useBusinessContext();
   const [startDate, setStartDate] = useState(getMonthStartDateString());
   const [endDate, setEndDate] = useState(today);
   const [milkEntries, setMilkEntries] = useState<MilkEntryRow[]>([]);
@@ -63,6 +71,7 @@ export function RecordsClient() {
   );
   const [transactionLock, setTransactionLock] = useState<CycleLockState | null>(null);
   const [isSavingTransaction, setIsSavingTransaction] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [alert, setAlert] = useState<AlertState | null>(null);
 
   const summary = buildSummary(milkEntries, transactions, itemTransactions);
@@ -71,6 +80,7 @@ export function RecordsClient() {
     transactions,
     itemTransactions,
   );
+  const groupedRecords = groupCombinedRecordsByUser(combinedRecords);
 
   async function refreshRecords() {
     if (!startDate || !endDate) {
@@ -226,6 +236,8 @@ export function RecordsClient() {
       await insertTransaction(supabase, {
         ...validation.payload,
         business_id: businessId,
+        created_by_user_id: userId,
+        created_by_email: userEmail,
       });
       await refreshRecords();
       setDialogOpen(false);
@@ -251,6 +263,48 @@ export function RecordsClient() {
 
   function handlePdfExport() {
     exportRecordsToPdf(combinedRecords, summary, startDate, endDate);
+  }
+
+  async function handleCsvImport(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setAlert(null);
+    setIsImporting(true);
+
+    try {
+      const content = await file.text();
+      const parsed = parseRecordsCsvImport(content, {
+        businessId,
+        milkRate,
+        userId,
+        userEmail,
+      });
+
+      await Promise.all([
+        insertMilkEntriesBulk(supabase, parsed.milkEntries),
+        insertTransactionsBulk(supabase, parsed.transactions),
+        insertItemTransactionsBulk(supabase, parsed.itemTransactions),
+      ]);
+
+      await refreshRecords();
+      setAlert({
+        tone: "success",
+        message: `Imported ${parsed.totalRows} rows for ${userEmail}. Milk rows use the current saved milk rate.`,
+      });
+    } catch (error) {
+      setAlert({
+        tone: "error",
+        message:
+          error instanceof Error ? error.message : "Unable to import the CSV file.",
+      });
+    } finally {
+      event.target.value = "";
+      setIsImporting(false);
+    }
   }
 
   return (
@@ -280,6 +334,13 @@ export function RecordsClient() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleCsvImport}
+              className="hidden"
+            />
             <button
               type="button"
               onClick={() => setDialogOpen(true)}
@@ -287,6 +348,15 @@ export function RecordsClient() {
             >
               <Plus className="h-4 w-4" />
               Add payment
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isImporting}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-5 text-sm font-semibold text-foreground transition hover:border-primary/30 hover:bg-primary/6 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <Upload className="h-4 w-4" />
+              {isImporting ? "Importing CSV..." : "Import CSV"}
             </button>
             <button
               type="button"
@@ -311,6 +381,13 @@ export function RecordsClient() {
 
         <p className="mt-4 text-sm leading-6 text-muted">
           Active range: {formatDateRange(startDate, endDate)}
+        </p>
+        <p className="mt-2 text-xs leading-6 text-muted">
+          CSV import headers: <span className="font-medium text-foreground">record_kind, date</span>
+          . Use <span className="font-medium text-foreground">shift, weight, fat</span> for milk,
+          <span className="font-medium text-foreground"> type, amount, note</span> for payments,
+          and <span className="font-medium text-foreground"> shift, item_name, type, amount, note</span> for item rows.
+          Imported rows are assigned to {userEmail}.
         </p>
       </section>
 
@@ -344,11 +421,10 @@ export function RecordsClient() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-foreground">
-              Transactions table
+              Records by user
             </h2>
             <p className="mt-1 text-sm leading-6 text-muted">
-              Combined milk earnings, item adjustments, and payment transactions for
-              the selected range.
+              Separate tables for each team member based on who created the record.
             </p>
           </div>
           <p className="text-sm text-muted">
@@ -369,40 +445,64 @@ export function RecordsClient() {
               Loading filtered records...
             </div>
           </div>
-        ) : combinedRecords.length ? (
-          <div className="mt-6 overflow-hidden rounded-3xl border border-border">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-border text-sm">
-                <thead className="bg-surface">
-                  <tr className="text-left text-muted">
-                    <th className="px-4 py-3 font-medium">Date</th>
-                    <th className="px-4 py-3 font-medium">Type</th>
-                    <th className="px-4 py-3 font-medium">Shift</th>
-                    <th className="px-4 py-3 font-medium">Amount</th>
-                    <th className="px-4 py-3 font-medium">Note</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border bg-white">
-                  {combinedRecords.map((record) => (
-                    <tr key={`${record.entry_type}-${record.id}`}>
-                      <td className="px-4 py-3 text-foreground">
-                        {formatDisplayDate(record.date)}
-                      </td>
-                      <td className="px-4 py-3 text-foreground">
-                        {formatTransactionType(record.type)}
-                      </td>
-                      <td className="px-4 py-3 text-foreground">
-                        {formatShiftLabel(record.shift)}
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-foreground">
-                        {formatAmount(record.amount)}
-                      </td>
-                      <td className="px-4 py-3 text-foreground">{record.note}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        ) : groupedRecords.length ? (
+          <div className="mt-6 space-y-6">
+            {groupedRecords.map((group) => (
+              <section
+                key={group.createdByEmail}
+                className="overflow-hidden rounded-3xl border border-border"
+              >
+                <div className="flex flex-col gap-4 border-b border-border bg-surface px-5 py-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">
+                      {group.createdByEmail}
+                    </h3>
+                    <p className="mt-1 text-sm leading-6 text-muted">
+                      {group.records.length} {group.records.length === 1 ? "record" : "records"} in the selected range.
+                    </p>
+                  </div>
+                  <div className="grid gap-2 text-sm text-muted sm:grid-cols-2 xl:grid-cols-4">
+                    <p>Total milk: <span className="font-semibold text-foreground">{formatAmount(group.summary.totalMilkAmount)}</span></p>
+                    <p>Total credit: <span className="font-semibold text-foreground">{formatAmount(group.summary.totalCredit)}</span></p>
+                    <p>Total debit: <span className="font-semibold text-foreground">{formatAmount(group.summary.totalDebit)}</span></p>
+                    <p>Balance: <span className="font-semibold text-foreground">{formatAmount(group.summary.remainingBalance)}</span></p>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-border text-sm">
+                    <thead className="bg-white">
+                      <tr className="text-left text-muted">
+                        <th className="px-4 py-3 font-medium">Date</th>
+                        <th className="px-4 py-3 font-medium">Type</th>
+                        <th className="px-4 py-3 font-medium">Shift</th>
+                        <th className="px-4 py-3 font-medium">Amount</th>
+                        <th className="px-4 py-3 font-medium">Note</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border bg-white">
+                      {group.records.map((record) => (
+                        <tr key={`${record.entry_type}-${record.id}`}>
+                          <td className="px-4 py-3 text-foreground">
+                            {formatDisplayDate(record.date)}
+                          </td>
+                          <td className="px-4 py-3 text-foreground">
+                            {formatTransactionType(record.type)}
+                          </td>
+                          <td className="px-4 py-3 text-foreground">
+                            {formatShiftLabel(record.shift)}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-foreground">
+                            {formatAmount(record.amount)}
+                          </td>
+                          <td className="px-4 py-3 text-foreground">{record.note}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
           </div>
         ) : (
           <div className="mt-6 rounded-3xl border border-dashed border-border bg-surface px-6 py-12 text-center">

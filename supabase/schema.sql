@@ -3,6 +3,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.businesses (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  milk_rate numeric not null default 8.5 constraint businesses_milk_rate_check check (milk_rate >= 0),
   created_at timestamptz not null default timezone('utc', now())
 );
 
@@ -17,6 +18,8 @@ create table if not exists public.business_members (
 create table if not exists public.milk_entries (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id) on delete cascade,
+  created_by_user_id uuid not null,
+  created_by_email text not null,
   date date not null,
   shift text not null check (shift in ('morning', 'evening')),
   weight numeric not null check (weight >= 0),
@@ -28,6 +31,8 @@ create table if not exists public.milk_entries (
 create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id) on delete cascade,
+  created_by_user_id uuid not null,
+  created_by_email text not null,
   date date not null,
   type text not null check (type in ('credit', 'debit')),
   amount numeric not null check (amount >= 0),
@@ -52,6 +57,8 @@ create table if not exists public.ledger_cycles (
 create table if not exists public.item_transactions (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id) on delete cascade,
+  created_by_user_id uuid not null,
+  created_by_email text not null,
   date date not null,
   shift text not null check (shift in ('morning', 'evening')),
   item_name text not null,
@@ -63,6 +70,15 @@ create table if not exists public.item_transactions (
 
 do $$
 begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'businesses_milk_rate_check'
+  ) then
+    alter table public.businesses
+      add constraint businesses_milk_rate_check
+      check (milk_rate >= 0);
+  end if;
+
   if not exists (
     select 1 from pg_constraint
     where conname = 'business_members_business_id_user_id_key'
@@ -97,11 +113,20 @@ create index if not exists idx_business_members_user_id
 create index if not exists idx_milk_entries_business_id_date
   on public.milk_entries (business_id, date);
 
+create index if not exists idx_milk_entries_business_id_creator_date
+  on public.milk_entries (business_id, created_by_email, date);
+
 create index if not exists idx_transactions_business_id_date
   on public.transactions (business_id, date);
 
+create index if not exists idx_transactions_business_id_creator_date
+  on public.transactions (business_id, created_by_email, date);
+
 create index if not exists idx_item_transactions_business_id_date
   on public.item_transactions (business_id, date);
+
+create index if not exists idx_item_transactions_business_id_creator_date
+  on public.item_transactions (business_id, created_by_email, date);
 
 create index if not exists idx_ledger_cycles_business_id_start_date
   on public.ledger_cycles (business_id, start_date);
@@ -221,6 +246,14 @@ on public.businesses
 for select
 to authenticated
 using (public.is_business_member(id));
+
+drop policy if exists "members update their businesses" on public.businesses;
+create policy "members update their businesses"
+on public.businesses
+for update
+to authenticated
+using (public.is_business_member(id))
+with check (public.is_business_member(id));
 
 drop policy if exists "users view their own membership" on public.business_members;
 create policy "users view their own membership"

@@ -19,7 +19,7 @@ function parsePositiveNumber(value: string) {
   return parsedValue;
 }
 
-export function validateMilkEntry(input: MilkEntryInput) {
+export function validateMilkEntry(input: MilkEntryInput, milkRate: number) {
   if (!input.date || !input.shift || input.weight.trim() === "" || input.fat.trim() === "") {
     return { error: "Date, shift, milk weight, and fat are required." };
   }
@@ -42,8 +42,29 @@ export function validateMilkEntry(input: MilkEntryInput) {
       shift: input.shift,
       weight,
       fat,
-      total_amount: calculateTotalAmount(weight, fat),
+      total_amount: calculateTotalAmount(weight, fat, milkRate),
     },
+  };
+}
+
+export function validateMilkRate(value: string) {
+  if (value.trim() === "") {
+    return { error: "Milk rate is required." };
+  }
+
+  const milkRate = parsePositiveNumber(value);
+
+  if (milkRate === null) {
+    return { error: "Milk rate must be a valid number." };
+  }
+
+  if (milkRate < 0) {
+    return { error: "Milk rate cannot be negative." };
+  }
+
+  return {
+    error: null,
+    value: milkRate,
   };
 }
 

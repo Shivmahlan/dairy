@@ -130,6 +130,8 @@ function normalizeMilkEntry(row: Record<string, unknown>): MilkEntryRow {
   return {
     id: String(row.id),
     business_id: String(row.business_id ?? ""),
+    created_by_user_id: String(row.created_by_user_id ?? ""),
+    created_by_email: String(row.created_by_email ?? "Unknown user"),
     date: String(row.date),
     shift: row.shift === "evening" ? "evening" : "morning",
     weight: Number(row.weight ?? 0),
@@ -143,6 +145,8 @@ function normalizeTransaction(row: Record<string, unknown>): TransactionRow {
   return {
     id: String(row.id),
     business_id: String(row.business_id ?? ""),
+    created_by_user_id: String(row.created_by_user_id ?? ""),
+    created_by_email: String(row.created_by_email ?? "Unknown user"),
     date: String(row.date),
     type: row.type === "debit" ? "debit" : "credit",
     amount: Number(row.amount ?? 0),
@@ -157,6 +161,8 @@ function normalizeItemTransaction(
   return {
     id: String(row.id),
     business_id: String(row.business_id ?? ""),
+    created_by_user_id: String(row.created_by_user_id ?? ""),
+    created_by_email: String(row.created_by_email ?? "Unknown user"),
     date: String(row.date),
     shift: row.shift === "evening" ? "evening" : "morning",
     item_name: String(row.item_name ?? ""),
@@ -347,20 +353,24 @@ export async function syncLedgerCycles(
   const [milkResponse, paymentsResponse, itemsResponse] = await Promise.all([
     supabase
       .from("milk_entries")
-      .select("id, business_id, date, shift, weight, fat, total_amount, created_at")
+      .select(
+        "id, business_id, created_by_user_id, created_by_email, date, shift, weight, fat, total_amount, created_at",
+      )
       .eq("business_id", businessId)
       .gte("date", overallStart)
       .lte("date", overallEnd),
     supabase
       .from("transactions")
-      .select("id, business_id, date, type, amount, note, created_at")
+      .select(
+        "id, business_id, created_by_user_id, created_by_email, date, type, amount, note, created_at",
+      )
       .eq("business_id", businessId)
       .gte("date", overallStart)
       .lte("date", overallEnd),
     supabase
       .from("item_transactions")
       .select(
-        "id, business_id, date, shift, item_name, type, amount, note, created_at",
+        "id, business_id, created_by_user_id, created_by_email, date, shift, item_name, type, amount, note, created_at",
       )
       .eq("business_id", businessId)
       .gte("date", overallStart)
@@ -512,7 +522,9 @@ export async function fetchLedgerCycleDetail(
   const [milkResponse, paymentsResponse, itemsResponse] = await Promise.all([
     supabase
       .from("milk_entries")
-      .select("id, business_id, date, shift, weight, fat, total_amount, created_at")
+      .select(
+        "id, business_id, created_by_user_id, created_by_email, date, shift, weight, fat, total_amount, created_at",
+      )
       .eq("business_id", businessId)
       .gte("date", cycle.start_date)
       .lte("date", cycle.end_date)
@@ -520,7 +532,9 @@ export async function fetchLedgerCycleDetail(
       .order("created_at", { ascending: true }),
     supabase
       .from("transactions")
-      .select("id, business_id, date, type, amount, note, created_at")
+      .select(
+        "id, business_id, created_by_user_id, created_by_email, date, type, amount, note, created_at",
+      )
       .eq("business_id", businessId)
       .gte("date", cycle.start_date)
       .lte("date", cycle.end_date)
@@ -529,7 +543,7 @@ export async function fetchLedgerCycleDetail(
     supabase
       .from("item_transactions")
       .select(
-        "id, business_id, date, shift, item_name, type, amount, note, created_at",
+        "id, business_id, created_by_user_id, created_by_email, date, shift, item_name, type, amount, note, created_at",
       )
       .eq("business_id", businessId)
       .gte("date", cycle.start_date)

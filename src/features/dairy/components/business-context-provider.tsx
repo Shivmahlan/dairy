@@ -1,10 +1,14 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 import type { BusinessContext } from "@/features/dairy/lib/types";
 
-const BusinessContextState = createContext<BusinessContext | null>(null);
+interface BusinessContextValue extends BusinessContext {
+  updateMilkRate: (nextMilkRate: number) => void;
+}
+
+const BusinessContextState = createContext<BusinessContextValue | null>(null);
 
 interface BusinessContextProviderProps {
   children: React.ReactNode;
@@ -15,8 +19,24 @@ export function BusinessContextProvider({
   children,
   value,
 }: BusinessContextProviderProps) {
+  const [businessContext, setBusinessContext] = useState(value);
+
+  useEffect(() => {
+    setBusinessContext(value);
+  }, [value]);
+
   return (
-    <BusinessContextState.Provider value={value}>
+    <BusinessContextState.Provider
+      value={{
+        ...businessContext,
+        updateMilkRate(nextMilkRate) {
+          setBusinessContext((current) => ({
+            ...current,
+            milkRate: nextMilkRate,
+          }));
+        },
+      }}
+    >
       {children}
     </BusinessContextState.Provider>
   );

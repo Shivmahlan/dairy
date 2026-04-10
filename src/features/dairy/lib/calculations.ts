@@ -1,9 +1,9 @@
-import { MILK_RATE } from "./constants";
 import type {
   CombinedRecordRow,
   ItemTransactionRow,
   LedgerCycleComputed,
   MilkEntryRow,
+  RecordGroup,
   RecordsSummary,
   TransactionRow,
 } from "./types";
@@ -12,12 +12,23 @@ export function roundAmount(value: number) {
   return Number(value.toFixed(2));
 }
 
-export function calculateTotalAmount(weight: number, fat: number) {
-  if (!Number.isFinite(weight) || !Number.isFinite(fat) || weight < 0 || fat < 0) {
+export function calculateTotalAmount(
+  weight: number,
+  fat: number,
+  milkRate: number,
+) {
+  if (
+    !Number.isFinite(weight) ||
+    !Number.isFinite(fat) ||
+    !Number.isFinite(milkRate) ||
+    weight < 0 ||
+    fat < 0 ||
+    milkRate < 0
+  ) {
     return 0;
   }
 
-  return roundAmount(weight * fat * MILK_RATE);
+  return roundAmount(weight * fat * milkRate);
 }
 
 export function calculateRemainingBalance(
@@ -63,6 +74,37 @@ export function buildSummary(
   };
 }
 
+export function buildSummaryFromCombinedRecords(
+  records: CombinedRecordRow[],
+): RecordsSummary {
+  const totalMilkAmount = roundAmount(
+    records
+      .filter((record) => record.type === "milk")
+      .reduce((sum, record) => sum + record.amount, 0),
+  );
+  const totalCredit = roundAmount(
+    records
+      .filter((record) => record.type === "credit")
+      .reduce((sum, record) => sum + record.amount, 0),
+  );
+  const totalDebit = roundAmount(
+    records
+      .filter((record) => record.type === "debit")
+      .reduce((sum, record) => sum + record.amount, 0),
+  );
+
+  return {
+    totalMilkAmount,
+    totalCredit,
+    totalDebit,
+    remainingBalance: calculateRemainingBalance(
+      totalMilkAmount,
+      totalCredit,
+      totalDebit,
+    ),
+  };
+}
+
 export function sortCombinedRecords(records: CombinedRecordRow[]) {
   return [...records].sort((left, right) => {
     if (left.date !== right.date) {
@@ -71,6 +113,27 @@ export function sortCombinedRecords(records: CombinedRecordRow[]) {
 
     return right.created_at.localeCompare(left.created_at);
   });
+}
+
+export function groupCombinedRecordsByUser(
+  records: CombinedRecordRow[],
+): RecordGroup[] {
+  const groups = new Map<string, CombinedRecordRow[]>();
+
+  records.forEach((record) => {
+    const key = record.created_by_email || "Unknown user";
+    groups.set(key, [...(groups.get(key) ?? []), record]);
+  });
+
+  return [...groups.entries()]
+    .map(([createdByEmail, groupedRecords]) => ({
+      createdByEmail,
+      records: sortCombinedRecords(groupedRecords),
+      summary: buildSummaryFromCombinedRecords(groupedRecords),
+    }))
+    .sort((left, right) =>
+      left.createdByEmail.localeCompare(right.createdByEmail),
+    );
 }
 
 export function getCurrentCycleBalance(cycle: LedgerCycleComputed | null) {
