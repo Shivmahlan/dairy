@@ -15,7 +15,8 @@ db.exec(`
     phone TEXT,
     address TEXT,
     joined_date TEXT NOT NULL,
-    notes TEXT
+    notes TEXT,
+    pin TEXT DEFAULT '1234'
   );
 
   CREATE TABLE IF NOT EXISTS Milk_Collection (
@@ -58,6 +59,7 @@ db.exec(`
 
 ensureColumn('Product_Requests', 'response_note', 'TEXT');
 ensureColumn('Product_Requests', 'processed_at', 'TEXT');
+ensureColumn('Members', 'pin', "TEXT DEFAULT '1234'");
 
 export default db;
 

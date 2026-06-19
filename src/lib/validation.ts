@@ -33,6 +33,7 @@ export function parseMemberInput(body: JsonRecord): MemberFormInput {
     address: getOptionalString(body, 'address', 240),
     joined_date: getDateString(body, 'joined_date', 'Joined date'),
     notes: getOptionalString(body, 'notes', 500),
+    pin: getOptionalString(body, 'pin', 20),
   };
 }
 

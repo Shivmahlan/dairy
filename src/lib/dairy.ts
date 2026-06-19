@@ -45,8 +45,8 @@ export function createMember(input: MemberFormInput) {
   try {
     const result = db
       .prepare(`
-        INSERT INTO Members (member_code, name, phone, address, joined_date, notes)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO Members (member_code, name, phone, address, joined_date, notes, pin)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         input.member_code,
@@ -55,6 +55,7 @@ export function createMember(input: MemberFormInput) {
         input.address ?? null,
         input.joined_date,
         input.notes ?? null,
+        input.pin || '1234',
       );
 
     return getMemberById(Number(result.lastInsertRowid));
@@ -68,7 +69,7 @@ export function updateMember(id: number, input: MemberFormInput) {
     const result = db
       .prepare(`
         UPDATE Members
-        SET member_code = ?, name = ?, phone = ?, address = ?, joined_date = ?, notes = ?
+        SET member_code = ?, name = ?, phone = ?, address = ?, joined_date = ?, notes = ?, pin = ?
         WHERE id = ?
       `)
       .run(
@@ -78,6 +79,7 @@ export function updateMember(id: number, input: MemberFormInput) {
         input.address ?? null,
         input.joined_date,
         input.notes ?? null,
+        input.pin || '1234',
         id,
       );
 
@@ -326,6 +328,8 @@ export function getMemberDashboard(memberCode: string) {
     throw new ApiError('Member not found.', 404);
   }
 
+  const { pin: _pin, ...memberWithoutPin } = member;
+
   const totalCredit =
     (db
       .prepare('SELECT COALESCE(SUM(total_amount), 0) AS total FROM Milk_Collection WHERE member_id = ?')
@@ -337,7 +341,7 @@ export function getMemberDashboard(memberCode: string) {
       .get(member.id) as TotalRow).total ?? 0;
 
   return {
-    member,
+    member: memberWithoutPin as Member,
     balance: totalCredit - totalDebit,
     totalCredit,
     totalDebit,

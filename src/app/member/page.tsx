@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, formatDateTime, formatSignedCurrency } from
 
 export default function MemberDashboard() {
   const [memberCode, setMemberCode] = useState('');
+  const [pin, setPin] = useState('');
   const [data, setData] = useState<MemberDashboardData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -14,7 +15,7 @@ export default function MemberDashboard() {
 
   async function fetchDashboardData(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!memberCode.trim()) {
+    if (!memberCode.trim() || !pin.trim()) {
       return;
     }
 
@@ -22,11 +23,22 @@ export default function MemberDashboard() {
     setError('');
 
     try {
-      const response = await fetch(`/api/member-dashboard?code=${memberCode.trim()}`);
+      const loginResponse = await fetch('/api/member-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberCode: memberCode.trim(), pin: pin.trim() }),
+      });
+
+      const loginPayload = (await loginResponse.json()) as { error?: string; success?: boolean };
+      if (!loginResponse.ok) {
+        throw new Error(loginPayload.error || 'Failed to authenticate.');
+      }
+
+      const response = await fetch('/api/member-dashboard');
       const payload = (await response.json()) as MemberDashboardData | { error?: string };
 
       if (!response.ok) {
-        throw new Error('error' in payload ? payload.error || 'Failed to authenticate.' : 'Failed to authenticate.');
+        throw new Error('error' in payload ? payload.error || 'Failed to load dashboard.' : 'Failed to load dashboard.');
       }
 
       setData(payload as MemberDashboardData);
@@ -35,6 +47,17 @@ export default function MemberDashboard() {
       setError(getErrorMessage(fetchError, 'Connection error.'));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/member-logout', { method: 'POST' });
+    } catch (logoutError) {
+      console.error('Logout error:', logoutError);
+    } finally {
+      setData(null);
+      setPin('');
     }
   }
 
@@ -51,7 +74,6 @@ export default function MemberDashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          member_id: data.member.id,
           product_name: productRequest,
         }),
       });
@@ -61,7 +83,7 @@ export default function MemberDashboard() {
         throw new Error(payload.error || 'Failed to submit request.');
       }
 
-      const refreshedData = await fetchMemberDashboard(data.member.member_code);
+      const refreshedData = await fetchMemberDashboard();
       setData(refreshedData);
       setProductRequest('');
       setRequestStatus('Request sent. You can track its status below.');
@@ -76,7 +98,7 @@ export default function MemberDashboard() {
         <div className="auth-card">
           <p className="eyebrow">Member portal</p>
           <h1 className="page-title">Access your dashboard</h1>
-          <p className="page-description">Enter your member code to review milk earnings, deductions, and request updates.</p>
+          <p className="page-description">Enter your member code and PIN to review milk earnings, deductions, and request updates.</p>
 
           <form onSubmit={fetchDashboardData} className="form-stack">
             <div className="form-group">
@@ -87,6 +109,18 @@ export default function MemberDashboard() {
                 onChange={(event) => setMemberCode(event.target.value)}
                 className="form-input auth-input"
                 placeholder="e.g. 01 or 105"
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">PIN</label>
+              <input
+                type="password"
+                value={pin}
+                onChange={(event) => setPin(event.target.value)}
+                className="form-input auth-input"
+                placeholder="••••"
                 required
               />
             </div>
@@ -112,7 +146,7 @@ export default function MemberDashboard() {
             Member code {data.member.member_code} • Joined {formatDate(data.member.joined_date)}
           </p>
         </div>
-        <button onClick={() => setData(null)} className="btn btn-secondary">
+        <button onClick={handleLogout} className="btn btn-secondary">
           Logout
         </button>
       </section>
@@ -269,8 +303,8 @@ export default function MemberDashboard() {
   );
 }
 
-async function fetchMemberDashboard(memberCode: string) {
-  const response = await fetch(`/api/member-dashboard?code=${memberCode}`);
+async function fetchMemberDashboard() {
+  const response = await fetch('/api/member-dashboard');
   const payload = (await response.json()) as MemberDashboardData | { error?: string };
 
   if (!response.ok) {

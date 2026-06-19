@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createProductRequest, listProductRequests, updateProductRequest } from '@/lib/dairy';
 import { handleApiError } from '@/lib/http';
-import { parseProductRequestInput, parseProductRequestUpdateInput, readJson } from '@/lib/validation';
+import { parseProductRequestUpdateInput, readJson } from '@/lib/validation';
+
+import { cookies } from 'next/headers';
+import { verifySession } from '@/lib/session';
 
 export async function GET(request: Request) {
   try {
@@ -15,9 +18,25 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('member_session')?.value;
+
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
+
+    const session = verifySession(token);
+    if (!session || !session.memberId) {
+      return NextResponse.json({ error: 'Session expired or invalid. Please log in again.' }, { status: 401 });
+    }
+
     const body = await readJson(request);
-    const payload = parseProductRequestInput(body);
-    const requestInfo = createProductRequest(payload.member_id, payload.product_name);
+    const productName = body.product_name;
+    if (typeof productName !== 'string' || !productName.trim()) {
+      return NextResponse.json({ error: 'Product name is required.' }, { status: 400 });
+    }
+
+    const requestInfo = createProductRequest(session.memberId, productName.trim());
     return NextResponse.json({ ...requestInfo, success: true }, { status: 201 });
   } catch (error) {
     return handleApiError(error, 'Failed to submit request.');

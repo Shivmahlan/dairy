@@ -10,6 +10,7 @@ export type Member = {
   address: string | null;
   joined_date: string;
   notes: string | null;
+  pin: string | null;
 };
 
 export type MemberFormInput = {
@@ -19,6 +20,7 @@ export type MemberFormInput = {
   address?: string | null;
   joined_date: string;
   notes?: string | null;
+  pin?: string | null;
 };
 
 export type MemberOption = Pick<Member, 'id' | 'member_code' | 'name'>;

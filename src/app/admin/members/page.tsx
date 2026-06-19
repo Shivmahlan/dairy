@@ -17,6 +17,7 @@ type MemberFormState = {
   address: string;
   joined_date: string;
   notes: string;
+  pin: string;
 };
 
 const createEmptyForm = (): MemberFormState => ({
@@ -26,6 +27,7 @@ const createEmptyForm = (): MemberFormState => ({
   address: '',
   joined_date: getLocalDateValue(),
   notes: '',
+  pin: '1234',
 });
 
 export default function MembersPage() {
@@ -97,6 +99,7 @@ export default function MembersPage() {
       address: member.address ?? '',
       joined_date: member.joined_date,
       notes: member.notes ?? '',
+      pin: member.pin ?? '1234',
     });
     setShowModal(true);
   }
@@ -310,6 +313,19 @@ export default function MembersPage() {
                   <label className="form-label">Address</label>
                   <input name="address" value={formData.address} onChange={handleInputChange} className="form-input" />
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Login PIN (Default is 1234)</label>
+                <input
+                  required
+                  name="pin"
+                  value={formData.pin}
+                  onChange={handleInputChange}
+                  className="form-input"
+                  placeholder="e.g. 1234"
+                  maxLength={20}
+                />
               </div>
 
               <div className="form-group">
